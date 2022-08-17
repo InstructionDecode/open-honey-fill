@@ -1,11 +1,11 @@
 #include <Arduino.h>
 
-
-#include "FS.h"
-#include "..\.pio\libdeps\pico\TFT_eSPI\examples\GUI Widgets\Buttons\Button_demo\Free_Fonts.h" // Include the header file attached to this sketch
-
 #include <TFT_eSPI.h>              // Hardware-specific library
-#include <TFT_eWidget.h>           // Widget library
+#include <TFT_eWidget.h>            // Widget library
+#include "FS.h"
+//#include "..\.pio\libdeps\pico\TFT_eSPI\examples\GUI Widgets\Buttons\Button_demo\Free_Fonts.h" // Include the header file attached to this sketch
+
+         
 
 TFT_eSPI tft = TFT_eSPI();         // Invoke custom library
 
@@ -160,7 +160,7 @@ void setup() {
   tft.begin();
   tft.setRotation(2);
   tft.fillScreen(TFT_BLACK);
-  tft.setFreeFont(FF18);
+  tft.setFreeFont(&FreeSansBold24pt7b);
 
   // Calibrate the touch screen and retrieve the scaling factors
   touch_calibrate();
