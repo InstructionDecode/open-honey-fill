@@ -7,56 +7,107 @@
 #include <TFT_eWidget.h> // Widget and layout classes
 #include <button.h>
 
-enum State
-{
-  START,
-  MAINPAGE,
-  SETTINGS,
-  CALIBRATION,
-  TEST
-};
 
-enum State state = START;
-enum State lastState = START;
+#include <lvgl.h>
+#include "demos/lv_demos.h"
 
-TFT_eSPI tft = TFT_eSPI();
+#define CALIBRATION_FILE "/TouchCalData2"
 
-#define CALIBRATION_FILE "/TouchCalData1"
+// Set REPEAT_CAL to true instead of false to run calibration
+// again, otherwise it will only be done once.
+// Repeat calibration if you change the screen rotation.
 #define REPEAT_CAL false
 
-ButtonWidget btnL = ButtonWidget(&tft);
+/*Change to your screen resolution*/
+static const uint16_t screenWidth  = 320;
+static const uint16_t screenHeight = 480;
 
-#define BUTTON_W 260
-#define BUTTON_H 100
+static lv_disp_draw_buf_t draw_buf;
+static lv_color_t buf[ screenWidth * 10 ];
 
-ButtonWidget *btn[] = {&btnL};
-;
-uint8_t buttonCount = sizeof(btn) / sizeof(btn[0]);
+TFT_eSPI tft = TFT_eSPI(screenWidth, screenHeight); /* TFT instance */
 
-void btnL_pressAction(void)
+#if LV_USE_LOG != 0
+/* Serial debugging */
+void my_print(const char * buf)
 {
-  Serial.println("btnL pressed");
-  state=MAINPAGE;
-  // btnL.drawSmoothButton(true);
+    Serial.printf(buf);
+    Serial.flush();
+}
+#endif
+
+/* Display flushing */
+void my_disp_flush( lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p )
+{
+    uint32_t w = ( area->x2 - area->x1 + 1 );
+    uint32_t h = ( area->y2 - area->y1 + 1 );
+
+    tft.startWrite();
+    tft.setAddrWindow( area->x1, area->y1, w, h );
+    tft.pushColors( ( uint16_t * )&color_p->full, w * h, true );
+    tft.endWrite();
+
+    lv_disp_flush_ready( disp );
 }
 
-void btnL_releaseAction(void)
+/*Read the touchpad*/
+void my_touchpad_read( lv_indev_drv_t * indev_driver, lv_indev_data_t * data )
 {
-  // Serial.println("btnL released");
-  // btnL.drawSmoothButton(false);
+    uint16_t touchX, touchY;
+
+    //Serial.print( " Test " );
+        
+
+    bool touched = tft.getTouch( &touchX, &touchY, 600); 
+
+    if( !touched )
+    {
+        data->state = LV_INDEV_STATE_REL;
+    }
+    else
+    {
+        data->state = LV_INDEV_STATE_PR;
+
+        /*Set the coordinates*/
+        data->point.x = touchX;
+        data->point.y = touchY;
+
+        Serial.print( "Data x " );
+        Serial.println( touchX );
+
+        Serial.print( "Data y " );
+        Serial.println( touchY );
+    }
 }
 
-void initButtons()
+static void btn_event_cb(lv_event_t * e)
 {
-  uint16_t x = (tft.width() - BUTTON_W) / 2;
-  uint16_t y = tft.height() / 2 - BUTTON_H - 10;
-  btnL.initButtonUL(x, y, BUTTON_W, BUTTON_H, TFT_WHITE, TFT_GREY, TFT_YELLOW, "Start", 1);
-  btnL.setPressAction(btnL_pressAction);
-  btnL.setReleaseAction(btnL_releaseAction);
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t * btn = lv_event_get_target(e);
+    if(code == LV_EVENT_CLICKED) {
+        static uint8_t cnt = 0;
+        cnt++;
 
-  btnL.drawSmoothButton(false, 4, TFT_BLACK); // 3 is outline width, TFT_BLACK is the surrounding background colour for anti-aliasing
+        /*Get the first child of the button which is the label and change its text*/
+        lv_obj_t * label = lv_obj_get_child(btn, 0);
+        lv_label_set_text_fmt(label, "Button: %d", cnt);
+    }
+}
 
-  y = tft.height() / 2 + 10;
+/**
+ * Create a button with a label and react on click event.
+ */
+void lv_example_get_started_2(void)
+{
+    lv_obj_t * btn = lv_btn_create(lv_scr_act());     /*Add a button the current screen*/
+    //lv_obj_set_pos(btn, 10, 10);                            /*Set its position*/
+    lv_obj_align( btn, LV_ALIGN_CENTER, 0, 0 );
+    lv_obj_set_size(btn, 120, 50);                          /*Set its size*/
+    lv_obj_add_event_cb(btn, btn_event_cb, LV_EVENT_ALL, NULL);           /*Assign a callback to the button*/
+
+    lv_obj_t * label = lv_label_create(btn);          /*Add a label to the button*/
+    lv_label_set_text(label, "Button");                     /*Set the labels text*/
+    lv_obj_center(label);
 }
 
 void touch_calibrate()
@@ -65,26 +116,23 @@ void touch_calibrate()
   uint8_t calDataOK = 0;
 
   // check file system exists
-  if (!LittleFS.begin())
-  {
+  if (!SPIFFS.begin()) {
     Serial.println("Formating file system");
-    LittleFS.format();
-    LittleFS.begin();
+    SPIFFS.format();
+    SPIFFS.begin();
   }
 
   // check if calibration file exists and size is correct
-  if (LittleFS.exists(CALIBRATION_FILE))
-  {
+  if (SPIFFS.exists(CALIBRATION_FILE)) {
     if (REPEAT_CAL)
     {
       // Delete if we want to re-calibrate
-      LittleFS.remove(CALIBRATION_FILE);
+      SPIFFS.remove(CALIBRATION_FILE);
     }
     else
     {
-      File f = LittleFS.open(CALIBRATION_FILE, "r");
-      if (f)
-      {
+      File f = SPIFFS.open(CALIBRATION_FILE, "r");
+      if (f) {
         if (f.readBytes((char *)calData, 14) == 14)
           calDataOK = 1;
         f.close();
@@ -92,13 +140,10 @@ void touch_calibrate()
     }
   }
 
-  if (calDataOK && !REPEAT_CAL)
-  {
+  if (calDataOK && !REPEAT_CAL) {
     // calibration data valid
     tft.setTouch(calData);
-  }
-  else
-  {
+  } else {
     // data not valid so recalibrate
     tft.fillScreen(TFT_BLACK);
     tft.setCursor(20, 0);
@@ -111,8 +156,7 @@ void touch_calibrate()
     tft.setTextFont(1);
     tft.println();
 
-    if (REPEAT_CAL)
-    {
+    if (REPEAT_CAL) {
       tft.setTextColor(TFT_RED, TFT_BLACK);
       tft.println("Set REPEAT_CAL to false to stop this running again!");
     }
@@ -123,142 +167,78 @@ void touch_calibrate()
     tft.println("Calibration complete!");
 
     // store data
-    File f = LittleFS.open(CALIBRATION_FILE, "w");
-    if (f)
-    {
+    File f = SPIFFS.open(CALIBRATION_FILE, "w");
+    if (f) {
       f.write((const unsigned char *)calData, 14);
       f.close();
     }
   }
 }
 
-/*void buttonErkennungStart()
-{
-  for (uint8_t b = 0; b < buttonCount; b++)
-  {
-    if (pressed && btn[b]->contains(t_x, t_y))
-    {
-      btn[b]->press(true); // tell the button it is pressed
-      btn[b]->pressAction(); // perform the button's onPress function [if it exists
-    }
-    else
-    {
-      btn[b]->press(false); // tell the button it is NOT pressed
-    }
-  }
 
-  // Check if any key has changed state
-  for (uint8_t b = 0; b < buttonCount; b++)
-  {
 
-    if (btn[b]->justReleased())
-      btn[b]->drawButton(); // draw normal
-
-    if (btn[b]->justPressed())
-    {
-      btn[b]->drawButton(true); // draw invert
-    }
-  }
-}*/
-void goTOMainpage()
-{
-  if(lastState!=MAINPAGE)
-  {
-    tft.fillScreen(TFT_YELLOW);
-  tft.setCursor(20, 0);
-  tft.setTextFont(2);
-  tft.setTextSize(1);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.println("Main Page");
-  lastState=MAINPAGE;
-  }
-  
-}
 
 void setup()
 {
-  
-  Serial.begin(115200);
-  tft.begin();
-  tft.setRotation(2);
-  tft.fillScreen(TFT_YELLOW);
-  // tft.setFreeFont(FF18);
+    Serial.begin( 115200 ); /* prepare for possible serial debug */
+  	
+    String LVGL_Arduino = "Hello Arduino! ";
+    LVGL_Arduino += String('V') + lv_version_major() + "." + lv_version_minor() + "." + lv_version_patch();
 
-  // Calibrate the touch screen and retrieve the scaling factors
-  touch_calibrate();
-  initButtons();
+    Serial.println( LVGL_Arduino );
+    Serial.println( "I am LVGL_Arduino" );
+
+    lv_init();
+
+#if LV_USE_LOG != 0
+    lv_log_register_print_cb( my_print ); /* register print function for debugging */
+#endif
+
+    tft.begin();          /* TFT init */
+    tft.setRotation( 2 ); /* Landscape orientation, flipped */
+
+    /*Set the touchscreen calibration data,
+     the actual data for your display can be acquired using
+     the Generic -> Touch_calibrate example from the TFT_eSPI library*/
+    /*uint16_t calData[5] = { 275, 3620, 264, 3532, 1 };
+    tft.setTouch( calData );*/
+    touch_calibrate();
+
+    lv_disp_draw_buf_init( &draw_buf, buf, NULL, screenWidth * 10 );
+
+    /*Initialize the display*/
+    static lv_disp_drv_t disp_drv;
+    lv_disp_drv_init( &disp_drv );
+    /*Change the following line to your display resolution*/
+    disp_drv.hor_res = screenWidth;
+    disp_drv.ver_res = screenHeight;
+    disp_drv.flush_cb = my_disp_flush;
+    disp_drv.draw_buf = &draw_buf;
+    lv_disp_drv_register( &disp_drv );
+
+    /*Initialize the (dummy) input device driver*/
+    static lv_indev_drv_t indev_drv;
+    lv_indev_drv_init( &indev_drv );
+    indev_drv.type = LV_INDEV_TYPE_POINTER;
+    indev_drv.read_cb = my_touchpad_read;
+    lv_indev_t * my_indev = lv_indev_drv_register( &indev_drv );
+
+    /* Create simple label */
+   /* lv_obj_t *label = lv_label_create( lv_scr_act() );
+    lv_label_set_text( label, LVGL_Arduino.c_str() );
+    lv_obj_align( label, LV_ALIGN_CENTER, 0, 0 );*/
+    lv_example_get_started_2();
+
+    Serial.println( "Setup done" );
 }
 
 void loop()
 {
+  //Serial.println("tick_thread0");
+    lv_task_handler(); /* let the GUI do its work */
 
-  // Read the touch screen coordinates
-  uint16_t t_x = 0, t_y = 0; // To store the touch coordinates
+     delay(10);   /*Sleep for 5 millisecond*/
+    lv_tick_inc(10); 
+    //Serial.println("tick_thread");
+}
 
-  // Pressed will be set true is there is a valid touch on the screen
-  bool pressed = tft.getTouch(&t_x, &t_y);
-  
-  switch (state)
-  {
-  case START:
-    for (uint8_t b = 0; b < buttonCount; b++)
-  {
-    if (pressed && btn[b]->contains(t_x, t_y))
-    {
-      btn[b]->press(true); // tell the button it is pressed
-      btn[b]->pressAction(); // perform the button's onPress function [if it exists
-    }
-    else
-    {
-      btn[b]->press(false); // tell the button it is NOT pressed
-    }
-  }
-
-  // Check if any key has changed state
-  for (uint8_t b = 0; b < buttonCount; b++)
-  {
-
-    if (btn[b]->justReleased())
-      btn[b]->drawButton(); // draw normal
-
-    if (btn[b]->justPressed())
-    {
-      btn[b]->drawButton(true); // draw invert
-    }
-  }
-    break;
-  case MAINPAGE:
-    goTOMainpage();
-    break;
-  default:
-    break;
-  }
-  // / Check if any key coordinate boxes contain the touch coordinates
-  /*if (state==START){
-  for (uint8_t b = 0; b < buttonCount; b++)
-  {
-    if (pressed && btn[b]->contains(t_x, t_y))
-    {
-      btn[b]->press(true); // tell the button it is pressed
-      btn[b]->pressAction(); // perform the button's onPress function [if it exists
-    }
-    else
-    {
-      btn[b]->press(false); // tell the button it is NOT pressed
-    }
-  }
-
-  // Check if any key has changed state
-  for (uint8_t b = 0; b < buttonCount; b++)
-  {
-
-    if (btn[b]->justReleased())
-      btn[b]->drawButton(); // draw normal
-
-    if (btn[b]->justPressed())
-    {
-      btn[b]->drawButton(true); // draw invert
-    }
-  }
-  }*/ //end if state==START
-} // end loop
