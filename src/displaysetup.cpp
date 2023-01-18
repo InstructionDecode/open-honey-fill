@@ -136,7 +136,7 @@ void init_lvgl(){
     #if LV_USE_LOG != 0
     lv_log_register_print_cb( my_print ); /* register print function for debugging */
     #endif
-    lv_disp_draw_buf_init( &draw_buf, buf, buf_2, screenWidth * 10 );
+    lv_disp_draw_buf_init( &draw_buf, buf, buf_2, screenWidth * 50);
 
     /*Initialize the display*/
     
@@ -146,6 +146,7 @@ void init_lvgl(){
     disp_drv.ver_res = screenHeight;
     disp_drv.flush_cb = my_disp_flush;
     disp_drv.draw_buf = &draw_buf;
+    
     lv_disp_drv_register( &disp_drv );
 
     /*Initialize the (dummy) input device driver*/

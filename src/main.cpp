@@ -28,8 +28,8 @@ void loop()
   //Serial.println("tick_thread0");
     lv_task_handler(); /* let the GUI do its work */
 
-    delay(2);   /*Sleep for 5 millisecond*/
-    lv_tick_inc(2); 
+    delay(1);   /*Sleep for 5 millisecond*/
+    lv_tick_inc(1); 
     //Serial.println("tick_thread");
 }
 
